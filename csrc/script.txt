@@ -1,0 +1,1 @@
+gcc -Os -I /home/adam/Desktop/ArtPanda3D/include/python3.6m -o cmain cmain.c -lpython3.6m -lpthread -lm -lutil -ldl
