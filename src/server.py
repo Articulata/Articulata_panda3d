@@ -132,10 +132,23 @@ class PlayerReg(DirectObject):
             cls = find_class(self.player_list, "conn_id", connection)
             cls.username = username
         elif msg_type == "quit":
+            logging.debug("Player has quit")
             self.active_players -= 1
+
             player_num = iterator.getInt8()
-            player_id = self.player_list.index(find_class(self.player_list, "player_id", player_num))
+            player_cls = find_class(self.player_list, "player_id", player_num)
+            player_id = self.player_list.index(player_cls)
+            player_name = player_cls.username
             del self.player_list[player_id]
+
+            datagram = PyDatagram()
+            datagram.addString("remove")
+            datagram.addString(player_name)
+
+            for p in self.player_list:
+                server_class.cWriter.send(datagram, p.conn_id)
+
+            logging.info(f"Player {player_name} has left the game")
 
     def sendInitialInfo(self, num_players, server):  # Initialize the new Player
         conn = self.player_list[-1].conn_id  # set the connection to the player's connection

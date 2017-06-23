@@ -93,19 +93,23 @@ class Terrain(GeoMipTerrain):
 class PlayerReg(DirectObject):  # This class will regulate the players
     def __init__(self):
         self.player_dict = {}
+        self.players = []
         self.num_players = 0
 
-    def ProcessData(self, datagram, m, chatClass):  # recv
+    def ProcessData(self, datagram, m, chatClass):
         # process received data
         iterator = PyDatagramIterator(datagram)
         self.type = iterator.getString()
+
         if self.type == "init":
             logging.info("initializing")
             m.player_id = iterator.getUint8()
             self.num_players = iterator.getUint8()
+
             if self.num_players > 1:
                 for _ in range(self.num_players):
                     username = iterator.getString()
+
                     self.player_dict[username] = Player()
                     self.player_dict[username].username = username
                     self.player_dict[username].load()
@@ -120,13 +124,19 @@ class PlayerReg(DirectObject):  # This class will regulate the players
             logging.debug("Send introduction")
         elif self.type == "update":
             self.num_players = iterator.getInt8()
+
             for _ in range(self.num_players):
                 username = iterator.getString()
+
                 if username == m.username:
                     for i in range(6):
                         iterator.getFloat64()  # TODO: Implement check
                     continue
-                print(self.player_dict)
+
+                if username not in self.player_dict.keys():
+                    self.player_dict[username] = Player(username)
+                    self.player_dict[username].load()
+
                 self.player_dict[username].currentPos['x'] = iterator.getFloat64()
                 self.player_dict[username].currentPos['y'] = iterator.getFloat64()
                 self.player_dict[username].currentPos['z'] = iterator.getFloat64()
@@ -134,7 +144,12 @@ class PlayerReg(DirectObject):  # This class will regulate the players
                 self.player_dict[username].currentPos['p'] = iterator.getFloat64()
                 self.player_dict[username].currentPos['r'] = iterator.getFloat64()
 
-        if self.type == "chat":
+        elif self.type == "remove":
+            username = iterator.getString()
+            self.player_dict[username].model.removeNode()
+            del self.player_dict[username]
+
+        elif self.type == "chat":
             self.text = iterator.getString()
             chatClass.setText(self.text)
 
@@ -205,20 +220,18 @@ class Me(DirectObject):
                                                                  self.model.getY()) * self.terrainScale
         self.model.setZ(self.meTerrainHeight)
 
-        # CAMERA CONTROL#
-
 
         # base.camera.reparentTo(self.model)
         base.camera.lookAt(self.camDummy)
         base.camLens.setNear(.1)
 
-        if (keyClass.keyMap["cam"] == 1):
+        if keyClass.keyMap["cam"] == 1:
             # base.camera.setZ(5)
             # base.camera.setY(1)
             base.disableMouse()
             base.camera.setPosHpr(0, 2, 5, 0, 0, 0)
 
-        elif (keyClass.keyMap["cam"] == 2):
+        elif keyClass.keyMap["cam"] == 2:
             # base.camera.setPosHpr(0,-30,10,0,0,0)
             base.enableMouse()
         else:
@@ -314,11 +327,11 @@ class Keys(DirectObject):
 
 
 class Player(DirectObject):
-    def __init__(self):
+    def __init__(self, username=""):
         self.currentPos = {'x': 244, 'y': 188, 'z': 0, 'h': 0, 'p': 0,
                            'r': 0}  # stores rotation too
         self.moving = False
-        self.username = ""
+        self.username = username
 
     def load(self):
         self.model = Actor("assets/models/ninja", {"walk": "assets/models/ninja"})
