@@ -182,7 +182,7 @@ class player(DirectObject):
 # receive connection > create Player > send Player initializing info > receive updates from Player and adjust data accordingly > send update to all Players(all positions)
 
 # Create the server
-worldServer = Server(9099, 1000)
+worldServer = Server(9415, 1000)
 
 Active = PlayerReg()
 

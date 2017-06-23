@@ -41,22 +41,21 @@ class Client(DirectObject):
         self.cWriter = ConnectionWriter(self.cManager, 0)  # Sends Data
         self.port = p  # Server's port
         self.ip = i  # server's ip
-        self.Connection = self.cManager.openTCPClientConnection(self.ip, self.port,
-                                                                3000)  # Create the connection
-        if self.Connection:
-            self.cReader.addConnection(self.Connection)  # receive messages from server
+        self.conn = self.cManager.openTCPClientConnection(self.ip, self.port, 3000)
+        if self.conn:
+            self.cReader.addConnection(self.conn)  # receive messages from server
         else:
             logging.warning('connection failed')
 
-    def tskReaderPolling(self, m, playerRegulator, chatClass):
+    def data_available(self, arg):
         # this function checks to see if there is any data from the server
         if self.cReader.dataAvailable():
-            self.datagram = NetDatagram()  # catch the incoming data in this instance
+            datagram = NetDatagram()  # catch the incoming data in this instance
             # Check the return value; if we were threaded, someone else could have
             # snagged this data before we did
-            if self.cReader.getData(self.datagram):
-                playerRegulator.ProcessData(self.datagram, m, chatClass)
-                self.datagram.clear()
+            if self.cReader.getData(datagram):
+                player_reg.process_data(datagram)
+                datagram.clear()
         return Task.cont
 
 
@@ -74,7 +73,7 @@ class Terrain(GeoMipTerrain):
         self.terrain.setFocalPoint(base.camera)
         self.terrain.getRoot().setSz(100)
         self.time = 0
-        self.elapsed = 0
+        self.Δt = 0
         self.terrain.getRoot().reparentTo(base.render)
         self.terrain.generate()
         # self.terrain.getRoot().setTexture(myTexture) #pjb UNcomment this line out if you want to set texture directly
@@ -82,8 +81,8 @@ class Terrain(GeoMipTerrain):
         # taskMgr.add(self.updateTerrain, "update")
 
     def updateTerrain(self, task):
-        self.elapsed = globalClock.getDt()
-        self.time += self.elapsed
+        self.Δt = base.globalClock.getDt()
+        self.time += self.Δt
         if (self.time > 5):
             self.terrain.update()
             self.time = 0
@@ -96,14 +95,14 @@ class PlayerReg(DirectObject):  # This class will regulate the players
         self.players = []
         self.num_players = 0
 
-    def ProcessData(self, datagram, m, chatClass):
+    def process_data(self, datagram):
         # process received data
         iterator = PyDatagramIterator(datagram)
         self.type = iterator.getString()
 
         if self.type == "init":
             logging.info("initializing")
-            m.player_id = iterator.getUint8()
+            me.player_id = iterator.getUint8()
             self.num_players = iterator.getUint8()
 
             if self.num_players > 1:
@@ -119,16 +118,17 @@ class PlayerReg(DirectObject):  # This class will regulate the players
                     logging.info(f"player '{username}' initialized")
             datagram = PyDatagram()
             datagram.addString("introduce")
-            datagram.addString(m.username)
-            world_client.cWriter.send(datagram, world_client.Connection)
+            datagram.addString(me.username)
+            world_client.cWriter.send(datagram, world_client.conn)
             logging.debug("Send introduction")
+
         elif self.type == "update":
             self.num_players = iterator.getInt8()
 
             for _ in range(self.num_players):
                 username = iterator.getString()
 
-                if username == m.username:
+                if username == me.username:
                     for i in range(6):
                         iterator.getFloat64()  # TODO: Implement check
                     continue
@@ -151,14 +151,13 @@ class PlayerReg(DirectObject):  # This class will regulate the players
 
         elif self.type == "chat":
             self.text = iterator.getString()
-            chatClass.setText(self.text)
+            chat_reg.setText(self.text)
 
-    def updatePlayers(self, m):
-
+    def update_players(self, arg):
         if self.num_players != 0:
             for k in self.player_dict.keys():
                 # As long as the player is not the client put it where the server says
-                if k != m.username:
+                if k != me.username:
                     self.player_dict[k].model.setPosHpr(self.player_dict[k].currentPos['x'],
                                                         self.player_dict[k].currentPos['y'],
                                                         self.player_dict[k].currentPos['z'],
@@ -169,13 +168,13 @@ class PlayerReg(DirectObject):  # This class will regulate the players
 
 
 class Me(DirectObject):
-    def __init__(self, terrainClass):
+    def __init__(self):
         self.model = Actor("assets/models/ninja", {"walk": "assets/models/ninja"})
         self.actorHead = self.model.exposeJoint(None, 'modelRoot', 'Joint8')
         # self.model.setScale(4)
         self.username = input("Input username: \n")
         self.player_id = None
-        self.timeSinceLastUpdate = 0
+        self.Δt_update = self.Δt = 0
         self.model.reparentTo(base.render)
         self.model.setScale(0.5)
         self.moving = False
@@ -184,29 +183,29 @@ class Me(DirectObject):
         self.model.setBlend(frameBlend=1)
         self.model.setPos(244, 188, 0)
         # STORE TERRAIN SCALE FOR LATER USE#
-        self.terrainScale = terrainClass.terrain.getRoot().getSz()
+        self.terrainScale = terrain.terrain.getRoot().getSz()
         base.camera.reparentTo(self.model)
         self.camDummy = self.model.attachNewNode("camDummy")
         self.camDummy.setZ(5)
 
-    def move(self, keyClass, terrainClass):
+    def move(self, arg):
         # self.meTerrainHeight = terrainClass.terrain.getElevation(self.model.getX(),self.model.getY()) * self.terrainScale
         # self.camTerrainHeight = terrainClass.terrain.getElevation(camera.getX(),camera.getY()) * self.terrainScale
-        self.elapsed = globalClock.getDt()
+        self.Δt = globalClock.getDt()
         # base.camera.lookAt(self.actorHead)
-        if keyClass.keyMap["left"] != 0:
-            self.model.setH(self.model.getH() + self.elapsed * 300)
+        if keys.keyMap["left"] != 0:
+            self.model.setH(self.model.getH() + self.Δt * 300)
             logging.debug(f"{self.model.getY()}, {self.model.getX()}")
-        if keyClass.keyMap["right"] != 0:
-            self.model.setH(self.model.getH() - self.elapsed * 300)
-        if keyClass.keyMap["forward"] != 0:
-            self.model.setY(self.model, (self.elapsed * 40))
-        if keyClass.keyMap["back"] != 0:
-            self.model.setY(self.model, -(self.elapsed * 40))
+        if keys.keyMap["right"] != 0:
+            self.model.setH(self.model.getH() - self.Δt * 300)
+        if keys.keyMap["forward"] != 0:
+            self.model.setY(self.model, (self.Δt * 40))
+        if keys.keyMap["back"] != 0:
+            self.model.setY(self.model, -(self.Δt * 40))
 
-        if (keyClass.keyMap["forward"] != 0) or \
-                (keyClass.keyMap["left"] != 0) or \
-                (keyClass.keyMap["right"] != 0):
+        if (keys.keyMap["forward"] != 0) or \
+                (keys.keyMap["left"] != 0) or \
+                (keys.keyMap["right"] != 0):
             if self.moving is False:
                 self.model.loop("walk", fromFrame=1, toFrame=11)
                 self.moving = True
@@ -216,22 +215,21 @@ class Me(DirectObject):
                 self.model.pose("walk", 5)
                 self.moving = False
 
-        self.meTerrainHeight = terrainClass.terrain.getElevation(self.model.getX(),
-                                                                 self.model.getY()) * self.terrainScale
+        self.meTerrainHeight = terrain.terrain.getElevation(self.model.getX(),
+                                                            self.model.getY()) * self.terrainScale
         self.model.setZ(self.meTerrainHeight)
-
 
         # base.camera.reparentTo(self.model)
         base.camera.lookAt(self.camDummy)
         base.camLens.setNear(.1)
 
-        if keyClass.keyMap["cam"] == 1:
+        if keys.keyMap["cam"] == 1:
             # base.camera.setZ(5)
             # base.camera.setY(1)
             base.disableMouse()
             base.camera.setPosHpr(0, 2, 5, 0, 0, 0)
 
-        elif keyClass.keyMap["cam"] == 2:
+        elif keys.keyMap["cam"] == 2:
             # base.camera.setPosHpr(0,-30,10,0,0,0)
             base.enableMouse()
         else:
@@ -239,52 +237,34 @@ class Me(DirectObject):
             base.camera.setPosHpr(0, -30, 10, 0, 0, 0)
             # base.camera.setZ(10)
             # base.camera.setY(-30)
-
-        """
-
-        self.camvec = self.model.getPos() - base.camera.getPos()
-        if (self.camTerrainHeight > self.meTerrainHeight):
-          camera.setZ(self.camTerrainHeight + 5)
-        else:
-          camera.setZ(self.meTerrainHeight + 5)
-        self.camvec.setZ(0)
-        self.camdist = self.camvec.length()
-        self.camvec.normalize()
-        if (self.camdist > 20):
-          base.camera.setPos(base.camera.getPos() + self.camvec*(self.camdist-20))
-          self.camdist = 20.0
-        if (self.camdist < 10):
-          base.camera.setPos(base.camera.getPos() - self.camvec*(10-self.camdist))
-          self.camdist = 10.0
-        """
         return Task.cont
 
 
 class World(DirectObject):  # This class will control anything related to the virtual world
     def __init__(self):
-        self.timeSinceLastUpdate = 0
+        self.Δt_update = self.Δt = 0
 
-    def UpdateWorld(self, meClass, clientClass):
+    def update_world(self, arg):
         # get the time since the last framerate
-        self.elapsed = globalClock.getDt()
+        self.Δt = globalClock.getDt()
         # add it to the time since we last set our position to where the server thinks we are
         # add the elapsed time to the time since the last update sent to the server
-        self.timeSinceLastUpdate += self.elapsed
-        if self.timeSinceLastUpdate > 0.1:
+        self.Δt_update += self.Δt
+        if self.Δt_update > 0.1:
             datagram = PyDatagram()
             datagram.addString("position")
-            datagram.addFloat64(meClass.model.getX())
-            datagram.addFloat64(meClass.model.getY())
-            datagram.addFloat64(meClass.model.getZ())
-            datagram.addFloat64(meClass.model.getH())
-            datagram.addFloat64(meClass.model.getP())
-            datagram.addFloat64(meClass.model.getR())
+            datagram.addFloat64(me.model.getX())
+            datagram.addFloat64(me.model.getY())
+            datagram.addFloat64(me.model.getZ())
+            datagram.addFloat64(me.model.getH())
+            datagram.addFloat64(me.model.getP())
+            datagram.addFloat64(me.model.getR())
             try:
-                clientClass.cWriter.send(datagram, clientClass.Connection)
+                world_client.cWriter.send(datagram, world_client.conn)
             except:
                 logging.info("No connection to the server. You are in stand alone mode.")
                 return Task.done
-            self.timeSinceLastUpdate = 0
+            self.Δt_update = 0
         return Task.cont
 
 
@@ -343,12 +323,10 @@ class Player(DirectObject):
         self.model.setBlend(frameBlend=1)
 
 
-class chatRegulator(DirectObject):
-    def __init__(self, clientClass, keysClass):
-        self.maxMessages = 14
-        self.messageList = []
-        self.client = clientClass
-        self.keys = keysClass
+class ChatReg(DirectObject):
+    def __init__(self):
+        self.max_messages = 14
+        self.message_list = []
         # for gui debug
         self.accept("p", self.getWidgetTransformsF)
         # Create GUI
@@ -378,17 +356,17 @@ class chatRegulator(DirectObject):
         self.calls = 0
 
     def handleTpress(self):
-        if not self.keys.isTyping:
+        if not keys.isTyping:
             self.clearText()
 
     def clearText(self):
         self.chatInput.enterText('')
-        self.keys.isTyping = True
+        keys.isTyping = True
         self.chatInput["focus"] = True
 
     def resetText(self):
         self.chatInput.enterText('')
-        self.keys.isTyping = False
+        keys.isTyping = False
 
     # def leaveText(self):
     #  self.keys.isTyping = False
@@ -396,17 +374,17 @@ class chatRegulator(DirectObject):
         self.datagram = PyDatagram()
         self.datagram.addString("chat")
         self.datagram.addString(text)
-        self.client.cWriter.send(self.datagram, self.client.Connection)
+        world_client.cWriter.send(self.datagram, world_client.conn)
 
     def setText(self, text):
         self.index = 0
         # put the messages on screen
-        self.messageList.append(text)
-        if (len(self.messageList) > 14):
-            self.messageList.reverse()
-            del self.messageList[14]
-            self.messageList.reverse()
-        for k in self.messageList:
+        self.message_list.append(text)
+        if (len(self.message_list) > 14):
+            self.message_list.reverse()
+            del self.message_list[14]
+            self.message_list.reverse()
+        for k in self.message_list:
             self.text(k, (-.95, (-.8 + (.06 * self.index))), self.index)
             self.index += 1
 
@@ -428,20 +406,18 @@ class chatRegulator(DirectObject):
 base.disableMouse()
 base.camera.setPos(0, 2, 10)
 # establish connection > send/receive updates > update world
-world_client = Client(9099, "localhost")
+world_client = Client(args.port, args.ip)
 terrain = Terrain()
 player_reg = PlayerReg()
-me = Me(terrain)
+me = Me()
 keys = Keys()
-w = World()
-chatReg = chatRegulator(world_client, keys)
+world = World()
+chat_reg = ChatReg()
 
-taskMgr.add(player_reg.updatePlayers, "keep every player where they are supposed to be",
-            extraArgs=[me])
-taskMgr.add(me.move, "move our penguin", extraArgs=[keys, terrain])
-taskMgr.add(world_client.tskReaderPolling, "Poll the connection reader",
-            extraArgs=[me, player_reg, chatReg])
-taskMgr.add(w.UpdateWorld, "keep the world up to date", extraArgs=[me, world_client])
+taskMgr.add(player_reg.update_players, "keep every player where they are supposed to be")
+taskMgr.add(me.move, "move our penguin")
+taskMgr.add(world_client.data_available, "Poll the connection reader")
+taskMgr.add(world.update_world, "keep the world up to date")
 
 
 def quit_on_death():
@@ -449,7 +425,7 @@ def quit_on_death():
     datagram = PyDatagram()
     datagram.addString("quit")
     datagram.addInt8(me.player_id)
-    world_client.cWriter.send(datagram, world_client.Connection)
+    world_client.cWriter.send(datagram, world_client.conn)
 
 
 atexit.register(quit_on_death)
