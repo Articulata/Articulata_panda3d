@@ -161,7 +161,7 @@ class PlayerReg(DirectObject):
         datagram.addUint8(num_players)
 
         if len(self.player_list) > 1:
-            for k in self.player_list:  # Add the current position of everyone in the game world and send it
+            for k in self.player_list:
                 datagram.addString(k.username)
                 datagram.addFloat64(k.pos_and_or['x'])
                 datagram.addFloat64(k.pos_and_or['y'])
@@ -175,13 +175,12 @@ class player(DirectObject):
         self.player_id = player_id
         self.conn_id = 0
         self.username = ""
-        self.pos_and_or = {'x': 0, 'y': 0, 'z': 0, 'h': 0, 'p': 0, 'r': 0}  # also stores rotation
-        self.moving = False  # if its moving the clients will need to know to animate it it (not implemented yet)
+        self.pos_and_or = {'x': 0, 'y': 0, 'z': 0, 'h': 0, 'p': 0, 'r': 0}
+        self.moving = False  # TODO
 
 
 # receive connection > create Player > send Player initializing info > receive updates from Player and adjust data accordingly > send update to all Players(all positions)
 
-# Create the server
 worldServer = Server(9415, 1000)
 
 Active = PlayerReg()

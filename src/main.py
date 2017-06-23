@@ -35,6 +35,7 @@ base = ShowBase()
 
 
 class Client(DirectObject):
+    """Handles connection and routes new datagrams"""
     def __init__(self, p, i):
         self.cManager = QueuedConnectionManager()  # Manages connections
         self.cReader = QueuedConnectionReader(self.cManager, 0)  # Reads incoming Data
@@ -60,11 +61,11 @@ class Client(DirectObject):
 
 
 class Terrain(GeoMipTerrain):
+    """Very temporary class, just so we have something below our feet"""
     def __init__(self):
         self.terrain = GeoMipTerrain("assets/mySimpleTerrain")
         self.terrain.setHeightfield(Filename("assets/Heightmap.png"))
-        self.terrain.setColorMap(Filename(
-            "assets/terrain.bmp"))  # pjb comment this line out if you want to set texture directly
+        self.terrain.setColorMap(Filename("assets/terrain.bmp"))
         # myTexture = loader.loadTexture("terrain.bmp") #pjb UNcomment this line out if you want to set texture directly
         self.terrain.setBlockSize(32)
         self.terrain.setBruteforce(True)
@@ -81,7 +82,7 @@ class Terrain(GeoMipTerrain):
         # taskMgr.add(self.updateTerrain, "update")
 
     def updateTerrain(self, task):
-        self.Δt = base.globalClock.getDt()
+        self.Δt = globalClock.getDt()
         self.time += self.Δt
         if (self.time > 5):
             self.terrain.update()
@@ -89,11 +90,13 @@ class Terrain(GeoMipTerrain):
         return Task.again
 
 
-class PlayerReg(DirectObject):  # This class will regulate the players
+class PlayerReg(DirectObject):
+    """Regulate player positions"""
     def __init__(self):
         self.player_dict = {}
         self.players = []
         self.num_players = 0
+        self.type = ""
 
     def process_data(self, datagram):
         # process received data
@@ -112,9 +115,9 @@ class PlayerReg(DirectObject):  # This class will regulate the players
                     self.player_dict[username] = Player()
                     self.player_dict[username].username = username
                     self.player_dict[username].load()
-                    self.player_dict[username].currentPos['x'] = iterator.getFloat64()
-                    self.player_dict[username].currentPos['y'] = iterator.getFloat64()
-                    self.player_dict[username].currentPos['z'] = iterator.getFloat64()
+                    self.player_dict[username].position['x'] = iterator.getFloat64()
+                    self.player_dict[username].position['y'] = iterator.getFloat64()
+                    self.player_dict[username].position['z'] = iterator.getFloat64()
                     logging.info(f"player '{username}' initialized")
             datagram = PyDatagram()
             datagram.addString("introduce")
@@ -137,12 +140,12 @@ class PlayerReg(DirectObject):  # This class will regulate the players
                     self.player_dict[username] = Player(username)
                     self.player_dict[username].load()
 
-                self.player_dict[username].currentPos['x'] = iterator.getFloat64()
-                self.player_dict[username].currentPos['y'] = iterator.getFloat64()
-                self.player_dict[username].currentPos['z'] = iterator.getFloat64()
-                self.player_dict[username].currentPos['h'] = iterator.getFloat64()
-                self.player_dict[username].currentPos['p'] = iterator.getFloat64()
-                self.player_dict[username].currentPos['r'] = iterator.getFloat64()
+                self.player_dict[username].position['x'] = iterator.getFloat64()
+                self.player_dict[username].position['y'] = iterator.getFloat64()
+                self.player_dict[username].position['z'] = iterator.getFloat64()
+                self.player_dict[username].position['h'] = iterator.getFloat64()
+                self.player_dict[username].position['p'] = iterator.getFloat64()
+                self.player_dict[username].position['r'] = iterator.getFloat64()
 
         elif self.type == "remove":
             username = iterator.getString()
@@ -158,16 +161,17 @@ class PlayerReg(DirectObject):  # This class will regulate the players
             for k in self.player_dict.keys():
                 # As long as the player is not the client put it where the server says
                 if k != me.username:
-                    self.player_dict[k].model.setPosHpr(self.player_dict[k].currentPos['x'],
-                                                        self.player_dict[k].currentPos['y'],
-                                                        self.player_dict[k].currentPos['z'],
-                                                        self.player_dict[k].currentPos['h'],
-                                                        self.player_dict[k].currentPos['p'],
-                                                        self.player_dict[k].currentPos['r'])
+                    self.player_dict[k].model.setPosHpr(self.player_dict[k].position['x'],
+                                                        self.player_dict[k].position['y'],
+                                                        self.player_dict[k].position['z'],
+                                                        self.player_dict[k].position['h'],
+                                                        self.player_dict[k].position['p'],
+                                                        self.player_dict[k].position['r'])
         return Task.cont
 
 
 class Me(DirectObject):
+    """Testing self controlled player, can be build upon"""
     def __init__(self):
         self.model = Actor("assets/models/ninja", {"walk": "assets/models/ninja"})
         self.actorHead = self.model.exposeJoint(None, 'modelRoot', 'Joint8')
@@ -240,7 +244,8 @@ class Me(DirectObject):
         return Task.cont
 
 
-class World(DirectObject):  # This class will control anything related to the virtual world
+class World(DirectObject):
+    """Let them know where you stand! Seriously, world-updates"""
     def __init__(self):
         self.Δt_update = self.Δt = 0
 
@@ -269,6 +274,7 @@ class World(DirectObject):  # This class will control anything related to the vi
 
 
 class Keys(DirectObject):
+    """Key binding construct"""
     def __init__(self):
         self.isTyping = False
         self.keyMap = {"left": 0, "right": 0, "forward": 0, "back": 0, "cam": 0, "autoRun": 0}
@@ -307,23 +313,26 @@ class Keys(DirectObject):
 
 
 class Player(DirectObject):
+    """Player base class for networking and rendering muliplayer"""
     def __init__(self, username=""):
-        self.currentPos = {'x': 244, 'y': 188, 'z': 0, 'h': 0, 'p': 0,
+        self.position = {'x': 244, 'y': 188, 'z': 0, 'h': 0, 'p': 0,
                            'r': 0}  # stores rotation too
         self.moving = False
         self.username = username
+        self.model = self.animation_control = None
 
     def load(self):
         self.model = Actor("assets/models/ninja", {"walk": "assets/models/ninja"})
         self.model.reparentTo(base.render)
         self.model.setScale(0.5)
         self.moving = False
-        self.AnimControl = self.model.getAnimControl('walk')
-        self.AnimControl.setPlayRate(0.05)
+        self.animation_control = self.model.getAnimControl('walk')
+        self.animation_control.setPlayRate(0.05)
         self.model.setBlend(frameBlend=1)
 
 
 class ChatReg(DirectObject):
+    """Chat regulator, handles everything about chat"""
     def __init__(self):
         self.max_messages = 14
         self.message_list = []
@@ -380,7 +389,7 @@ class ChatReg(DirectObject):
         self.index = 0
         # put the messages on screen
         self.message_list.append(text)
-        if (len(self.message_list) > 14):
+        if len(self.message_list) > 14:
             self.message_list.reverse()
             del self.message_list[14]
             self.message_list.reverse()
