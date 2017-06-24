@@ -15,9 +15,6 @@ from direct.task.Task import Task
 from direct.task.TaskManagerGlobal import taskMgr
 from direct.gui.DirectGui import *
 
-from assets import map_objects
-from helper import iter_class_attr
-
 __author__ = "Adam Vandervorst"
 __email__ = "adam.vandervorst@articulatagame.com"
 __status__ = "Internal Alpha"
@@ -42,7 +39,7 @@ class Client(DirectObject):
         self.cWriter = ConnectionWriter(self.cManager, 0)  # Sends Data
         self.port = p  # Server's port
         self.ip = i  # server's ip
-        self.conn = self.cManager.openTCPClientConnection(self.ip, self.port, 3000)
+        self.conn = self.cManager.openTCPClientConnection(self.ip, self.port, 1000)
         if self.conn:
             self.cReader.addConnection(self.conn)  # receive messages from server
         else:
@@ -250,12 +247,9 @@ class World(DirectObject):
         self.Δt_update = self.Δt = 0
 
     def update_world(self, arg):
-        # get the time since the last framerate
         self.Δt = globalClock.getDt()
-        # add it to the time since we last set our position to where the server thinks we are
-        # add the elapsed time to the time since the last update sent to the server
         self.Δt_update += self.Δt
-        if self.Δt_update > 0.1:
+        if self.Δt_update > 0.05:
             datagram = PyDatagram()
             datagram.addString("position")
             datagram.addFloat64(me.model.getX())
@@ -315,8 +309,7 @@ class Keys(DirectObject):
 class Player(DirectObject):
     """Player base class for networking and rendering muliplayer"""
     def __init__(self, username=""):
-        self.position = {'x': 244, 'y': 188, 'z': 0, 'h': 0, 'p': 0,
-                           'r': 0}  # stores rotation too
+        self.position = {'x': 244, 'y': 188, 'z': 0, 'h': 0, 'p': 0, 'r': 0}
         self.moving = False
         self.username = username
         self.model = self.animation_control = None
@@ -422,6 +415,7 @@ me = Me()
 keys = Keys()
 world = World()
 chat_reg = ChatReg()
+
 
 taskMgr.add(player_reg.update_players, "keep every player where they are supposed to be")
 taskMgr.add(me.move, "move our penguin")

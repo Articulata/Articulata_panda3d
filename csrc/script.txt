@@ -1,1 +1,2 @@
 gcc -Os -I /home/adam/Desktop/ArtPanda3D/include/python3.6m -o cmain cmain.c -lpython3.6m -lpthread -lm -lutil -ldl
+~/Desktop/ArtPanda3D/bin/python3 cython.py --embed ~/Desktop/ArtPanda3D/Articulata_panda3d/csrc/cmain.py -v

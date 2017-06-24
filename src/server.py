@@ -5,7 +5,6 @@ from argparse import ArgumentParser
 from panda3d.core import *
 
 ConfigVariableString("window-type", "none").setValue("none")
-
 from direct.showbase.ShowBase import ShowBase
 from direct.task.TaskManagerGlobal import taskMgr
 from direct.distributed.PyDatagramIterator import PyDatagramIterator
@@ -13,7 +12,6 @@ from direct.distributed.PyDatagram import PyDatagram
 from direct.showbase.DirectObject import DirectObject
 from direct.task.Task import Task
 
-from helper import find_class, iter_class_attr
 
 __author__ = "Adam Vandervorst"
 __email__ = "adam.vandervorst@articulatagame.com"
@@ -30,7 +28,14 @@ logging.basicConfig(level=logging.DEBUG if args.debug else logging.INFO,
 base = ShowBase()
 
 
+def find_player(lst, attr, eq):
+    assert lst, "List can not be empty"
+    assert hasattr(lst[0], attr), "Instance has no attribute " + attr
+    return [cls for cls in lst if cls.__dict__[attr] == eq][0]
+        
+
 class Server(QueuedConnectionManager):
+    """Handles new connections and the incomming of packages"""
     def __init__(self, p, b):
         self.cManager = QueuedConnectionManager()
         self.cListener = QueuedConnectionListener(self.cManager, 0)
@@ -43,19 +48,15 @@ class Server(QueuedConnectionManager):
         self.num_count = 0
 
     def tskReaderPolling(self, regClass):
-        # This function listens for any data coming on already established functions
         if self.cReader.dataAvailable():
-            datagram = NetDatagram()  # catch the incoming data in this instance
-            # Check the return value; if we were threaded, someone else could have
-            # snagged this data before we did
+            datagram = NetDatagram()
+
             if self.cReader.getData(datagram):
                 regClass.updateData(datagram.getConnection(), datagram, self)
 
         return Task.cont
 
     def tskListenerPolling(self, reg_class):
-        # This Function checks to see if there are any new clients and adds their connection
-        # if theres a new connection add it to our listener
         if self.cListener.newConnectionAvailable():
             rendezvous = PointerToConnection()
             net_address = NetAddress()
@@ -64,7 +65,7 @@ class Server(QueuedConnectionManager):
                 reg_class.active_players += 1
                 new_connection = new_connection.p()
                 reg_class.player_list.append(player(self.num_count))
-                find_class(reg_class.player_list, "player_id", self.num_count).conn_id = new_connection
+                find_player(reg_class.player_list, "player_id", self.num_count).conn_id = new_connection
                 logging.debug(reg_class.active_players)
                 reg_class.sendInitialInfo(reg_class.active_players, self)
                 self.num_count += 1
@@ -74,13 +75,13 @@ class Server(QueuedConnectionManager):
 
 
 class PlayerReg(DirectObject):
+    """Registers new players and keeps existing ones up to date"""
     def __init__(self):
         self.player_list = []
         self.num_count = self.active_players = self.Δt_update = self.Δt = 0
 
     def updatePlayers(self, server_class, data, msg_type):  # send
         if msg_type == "positions":
-            # keep players updated on their position
             self.Δt = globalClock.getDt()
             self.Δt_update += self.Δt
             if self.Δt_update > 0.05:
@@ -117,7 +118,7 @@ class PlayerReg(DirectObject):
         iterator = PyDatagramIterator(datagram)
         msg_type = iterator.getString()
         if msg_type == "position":
-            pos_and_or = find_class(self.player_list, "conn_id", connection).pos_and_or
+            pos_and_or = find_player(self.player_list, "conn_id", connection).pos_and_or
             pos_and_or['x'] = iterator.getFloat64()
             pos_and_or['y'] = iterator.getFloat64()
             pos_and_or['z'] = iterator.getFloat64()
@@ -129,14 +130,14 @@ class PlayerReg(DirectObject):
         elif msg_type == "introduce":
             username = iterator.getString()
             logging.info(f"User {username} introduced himself")
-            cls = find_class(self.player_list, "conn_id", connection)
+            cls = find_player(self.player_list, "conn_id", connection)
             cls.username = username
         elif msg_type == "quit":
             logging.debug("Player has quit")
             self.active_players -= 1
 
             player_num = iterator.getInt8()
-            player_cls = find_class(self.player_list, "player_id", player_num)
+            player_cls = find_player(self.player_list, "player_id", player_num)
             player_id = self.player_list.index(player_cls)
             player_name = player_cls.username
             del self.player_list[player_id]
@@ -150,11 +151,11 @@ class PlayerReg(DirectObject):
 
             logging.info(f"Player {player_name} has left the game")
 
-    def sendInitialInfo(self, num_players, server):  # Initialize the new Player
-        conn = self.player_list[-1].conn_id  # set the connection to the player's connection
+    def sendInitialInfo(self, num_players, server):
+        conn = self.player_list[-1].conn_id
         
-        datagram = PyDatagram()  # create a datagram instance
-        datagram.addString("init")  # specify to the assets that this is an init type packet
+        datagram = PyDatagram()
+        datagram.addString("init")
         newest = self.player_list[-1].player_id
         datagram.addUint8(newest)
         logging.debug(f"{num_players} players and {newest} is the newest player")
@@ -178,8 +179,6 @@ class player(DirectObject):
         self.pos_and_or = {'x': 0, 'y': 0, 'z': 0, 'h': 0, 'p': 0, 'r': 0}
         self.moving = False  # TODO
 
-
-# receive connection > create Player > send Player initializing info > receive updates from Player and adjust data accordingly > send update to all Players(all positions)
 
 worldServer = Server(9415, 1000)
 
