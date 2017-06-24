@@ -90,68 +90,83 @@ class Terrain(GeoMipTerrain):
 class PlayerReg(DirectObject):
     """Regulate player positions"""
     def __init__(self):
+        self.iterator = None
         self.player_dict = {}
         self.players = []
         self.num_players = 0
         self.type = ""
 
     def process_data(self, datagram):
-        # process received data
-        iterator = PyDatagramIterator(datagram)
-        self.type = iterator.getString()
+        assert datagram
+        self.iterator = PyDatagramIterator(datagram)
+        self.type = self.iterator.getString()
 
         if self.type == "init":
-            logging.info("initializing")
-            me.player_id = iterator.getUint8()
-            self.num_players = iterator.getUint8()
-
-            if self.num_players > 1:
-                for _ in range(self.num_players):
-                    username = iterator.getString()
-
-                    self.player_dict[username] = Player()
-                    self.player_dict[username].username = username
-                    self.player_dict[username].load()
-                    self.player_dict[username].position['x'] = iterator.getFloat64()
-                    self.player_dict[username].position['y'] = iterator.getFloat64()
-                    self.player_dict[username].position['z'] = iterator.getFloat64()
-                    logging.info(f"player '{username}' initialized")
-            datagram = PyDatagram()
-            datagram.addString("introduce")
-            datagram.addString(me.username)
-            world_client.cWriter.send(datagram, world_client.conn)
-            logging.debug("Send introduction")
-
+            self.process_init()
         elif self.type == "update":
-            self.num_players = iterator.getInt8()
-
-            for _ in range(self.num_players):
-                username = iterator.getString()
-
-                if username == me.username:
-                    for i in range(6):
-                        iterator.getFloat64()  # TODO: Implement check
-                    continue
-
-                if username not in self.player_dict.keys():
-                    self.player_dict[username] = Player(username)
-                    self.player_dict[username].load()
-
-                self.player_dict[username].position['x'] = iterator.getFloat64()
-                self.player_dict[username].position['y'] = iterator.getFloat64()
-                self.player_dict[username].position['z'] = iterator.getFloat64()
-                self.player_dict[username].position['h'] = iterator.getFloat64()
-                self.player_dict[username].position['p'] = iterator.getFloat64()
-                self.player_dict[username].position['r'] = iterator.getFloat64()
-
+            self.process_update()
         elif self.type == "remove":
-            username = iterator.getString()
-            self.player_dict[username].model.removeNode()
-            del self.player_dict[username]
-
+            self.process_remove()
         elif self.type == "chat":
-            self.text = iterator.getString()
-            chat_reg.setText(self.text)
+            self.process_chat()
+        else:
+            logging.warning("Datagram not recognized")
+
+    def process_init(self):
+        it = self.iterator
+
+        logging.info("initializing")
+        me.player_id = it.getUint8()
+        self.num_players = it.getUint8()
+
+        if self.num_players > 1:
+            for _ in range(self.num_players):
+                username = it.getString()
+
+                self.player_dict[username] = Player()
+                self.player_dict[username].username = username
+                self.player_dict[username].load()
+                self.player_dict[username].position['x'] = it.getFloat64()
+                self.player_dict[username].position['y'] = it.getFloat64()
+                self.player_dict[username].position['z'] = it.getFloat64()
+                logging.info(f"player '{username}' initialized")
+        datagram = PyDatagram()
+        datagram.addString("introduce")
+        datagram.addString(me.username)
+        world_client.cWriter.send(datagram, world_client.conn)
+        logging.debug("Send introduction")
+
+    def process_update(self):
+        it = self.iterator
+        self.num_players = it.getInt8()
+
+        for _ in range(self.num_players):
+            username = it.getString()
+
+            if username == me.username:
+                for i in range(6):
+                    it.getFloat64()  # TODO: Implement check
+                continue
+
+            if username not in self.player_dict.keys():
+                self.player_dict[username] = Player(username)
+                self.player_dict[username].load()
+
+            self.player_dict[username].position['x'] = it.getFloat64()
+            self.player_dict[username].position['y'] = it.getFloat64()
+            self.player_dict[username].position['z'] = it.getFloat64()
+            self.player_dict[username].position['h'] = it.getFloat64()
+            self.player_dict[username].position['p'] = it.getFloat64()
+            self.player_dict[username].position['r'] = it.getFloat64()
+
+    def process_remove(self):
+        username = self.iterator.getString()
+        self.player_dict[username].model.removeNode()
+        del self.player_dict[username]
+
+    def process_chat(self):
+        self.text = self.iterator.getString()
+        chat_reg.setText(self.text)
 
     def update_players(self, arg):
         if self.num_players != 0:
@@ -318,7 +333,6 @@ class Player(DirectObject):
         self.model = Actor("assets/models/ninja", {"walk": "assets/models/ninja"})
         self.model.reparentTo(base.render)
         self.model.setScale(0.5)
-        self.moving = False
         self.animation_control = self.model.getAnimControl('walk')
         self.animation_control.setPlayRate(0.05)
         self.model.setBlend(frameBlend=1)
