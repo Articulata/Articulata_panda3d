@@ -11,6 +11,7 @@ from direct.distributed.PyDatagramIterator import PyDatagramIterator
 from direct.distributed.PyDatagram import PyDatagram
 from direct.showbase.DirectObject import DirectObject
 from direct.task.Task import Task
+from direct.stdpy import threading
 
 
 __author__ = "Adam Vandervorst"
@@ -182,12 +183,35 @@ class player(DirectObject):
         self.moving = False  # TODO
 
 
-server = Server(9415, 1000)
+class Interactive:
+    def __init__(self):
+        for inp in self:
+            inp.replace('^', '*')
 
-taskMgr.add(server.listener_polling_task, "Poll the connection listener")
-taskMgr.add(server.reader_polling_task, "Poll the connection reader")
-if args.mp:
-    taskMgr.add(server.update_positions, "Update Every Player", extraArgs=[None])
+            try:
+                output = eval(inp)
+                print('\033[1m' + str(output) + '\033[0m')
+            except SyntaxError as se:
+                print("Type 'help()' for an interactive help session")
+            except ZeroDivisionError as zde:
+                print(zde)
 
-logging.info("started")
-base.run()
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        return input()
+
+
+if __name__ == "__main__":
+    server = Server(9415, 1000)
+
+    taskMgr.add(server.listener_polling_task, "Poll the connection listener")
+    taskMgr.add(server.reader_polling_task, "Poll the connection reader")
+    if args.mp:
+        taskMgr.add(server.update_positions, "Update Every Player", extraArgs=[None])
+
+    threading.Thread(target=lambda: Interactive()).start()
+
+    logging.info("started")
+    base.run()

@@ -417,52 +417,51 @@ class ChatReg(DirectObject):
         self.txt[index].setPos(.05, .15 + .05 * index)
 
 
-# Just some groundwork
-
 base.disableMouse()
 base.camera.setPos(0, 2, 10)
-# establish connection > send/receive updates > update world
-world_client = Client(args.port, args.ip)
-terrain = Terrain()
-player_reg = PlayerReg()
-me = Me()
-keys = Keys()
-world = World()
-chat_reg = ChatReg()
+
+if __name__ == "__main__":
+    world_client = Client(args.port, args.ip)
+    terrain = Terrain()
+    player_reg = PlayerReg()
+    me = Me()
+    keys = Keys()
+    world = World()
+    chat_reg = ChatReg()
 
 
-taskMgr.add(player_reg.update_players, "keep every player where they are supposed to be")
-taskMgr.add(me.move, "move our penguin")
-taskMgr.add(world_client.data_available, "Poll the connection reader")
-taskMgr.add(world.update_world, "keep the world up to date")
+    taskMgr.add(player_reg.update_players, "keep every player where they are supposed to be")
+    taskMgr.add(me.move, "move our penguin")
+    taskMgr.add(world_client.data_available, "Poll the connection reader")
+    taskMgr.add(world.update_world, "keep the world up to date")
 
 
-def quit_on_death():
-    logging.critical("Shutting down")
-    datagram = PyDatagram()
-    datagram.addString("quit")
-    datagram.addInt8(me.player_id)
-    world_client.cWriter.send(datagram, world_client.conn)
+    def quit_on_death():
+        logging.critical("Shutting down")
+        datagram = PyDatagram()
+        datagram.addString("quit")
+        datagram.addInt8(me.player_id)
+        world_client.cWriter.send(datagram, world_client.conn)
 
 
-atexit.register(quit_on_death)
+    atexit.register(quit_on_death)
 
-# test code for lighting, normal mapping, etc...#
-# ambient light
-alight = AmbientLight('alight')
-alight.setColor(Vec4(0.2, 0.2, 0.2, 1))
-alnp = base.render.attachNewNode(alight)
-base.render.setLight(alnp)
-me.model.setShaderAuto()
-# me.model.setNormalMap("assets/models/nskinrd-normal.jpg")
+    # test code for lighting, normal mapping, etc...#
+    # ambient light
+    alight = AmbientLight('alight')
+    alight.setColor(Vec4(0.2, 0.2, 0.2, 1))
+    alnp = base.render.attachNewNode(alight)
+    base.render.setLight(alnp)
+    me.model.setShaderAuto()
+    # me.model.setNormalMap("assets/models/nskinrd-normal.jpg")
 
-lightpivot = base.render.attachNewNode("lightpivot")
-lightpivot.setPos(0, 0, 25)
-plight = PointLight('plight')
-plight.setColor(Vec4(1, 1, 1, 1))
-plnp = lightpivot.attachNewNode(plight)
-base.render.setLight(plnp)
-me.model.setShaderInput("light", plnp)
-# Castle = Castle(Vec3(288.96,294.45,30.17), Vec3(119.05,270,0),0.08)
+    lightpivot = base.render.attachNewNode("lightpivot")
+    lightpivot.setPos(0, 0, 25)
+    plight = PointLight('plight')
+    plight.setColor(Vec4(1, 1, 1, 1))
+    plnp = lightpivot.attachNewNode(plight)
+    base.render.setLight(plnp)
+    me.model.setShaderInput("light", plnp)
+    # Castle = Castle(Vec3(288.96,294.45,30.17), Vec3(119.05,270,0),0.08)
 
-base.run()
+    base.run()
