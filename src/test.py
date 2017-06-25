@@ -27,7 +27,7 @@ class Interface(Core):
 
         for plugin in self.plugins:
             self.__dict__.update(plugin.__dict__)
-            plugin()
+            plugin.__init__(self)
 
     def attributes(self):
         print("Interface attributes:")
@@ -56,4 +56,5 @@ class Plugin2(Interface):
 
 total = Interface()
 print()
-total.attributes()
+total.core_method()
+total.also_new_feature(total)
